@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>WebP → GIF 一括変換（iPhone対応）</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding-bottom: 40px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: 1.25rem;
+      margin: 0 0 4px;
+    }
+    .subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    .controls {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .control-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-item label {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    select {
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+    }
+    .drop-area {
+      border: 2px dashed #475569;
+      background: rgba(30, 41, 59, 0.6);
+      border-radius: 16px;
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.2s;
+      margin-bottom: 16px;
+    }
+    .drop-area:active, .drop-area.dragover {
+      border-color: var(--primary);
+      background: rgba(59, 130, 246, 0.12);
+    }
+    .drop-icon { font-size: 2rem; margin-bottom: 6px; }
+    .drop-title { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+    .drop-desc { font-size: 0.8rem; color: var(--muted); }
+    input[type="file"] { display: none; }
+
+    .action-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .btn {
+      flex: 1;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .btn-success { background: var(--success); }
+    .btn-secondary { background: #334155; }
+
+    .status-banner {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: #020617;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .badge {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #e2e8f0;
+      font-size: 0.68rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .card-footer {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-name {
+      font-size: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #cbd5e1;
+    }
+    .card-btn {
+      width: 100%;
+      padding: 7px 8px;
+      font-size: 0.8rem;
+      border-radius: 8px;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .card-btn.loading {
+      background: #334155;
+      color: #94a3b8;
+      pointer-events: none;
+    }
+    .card-btn.error {
+      background: var(--danger);
+    }
+
+    /* 拡大モーダル */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 100;
+    }
+    .modal.open { display: flex; }
+    .modal img {
+      max-width: 100%;
+      max-height: 75vh;
+      object-fit: contain;
+      border-radius: 10px;
+      background: #0f172a;
+    }
+    .modal-hint {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      text-align: center;
+    }
+    .modal-close {
+      margin-top: 14px;
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>WebP → GIF 一括変換</h1>
+      <p class="subtitle">アニメーションWebP対応・端末内ローカル処理</p>
+    </header>
+
+    <div class="controls">
+      <div class="control-item">
+        <label for="maxWidth">最大横幅（メモリ節約）</label>
+        <select id="maxWidth">
+          <option value="0">元のサイズ</option>
+          <option value="800" selected>800px（推奨）</option>
+          <option value="500">500px（軽量）</option>
+        </select>
+      </div>
+      <div class="control-item">
+        <label for="quality">画質・変換速度</label>
+        <select id="quality">
+          <option value="10" selected>標準（バランス）</option>
+          <option value="5">高画質</option>
+          <option value="20">高速</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="drop-area" id="dropArea">
+      <div class="drop-icon">🖼️</div>
+      <div class="drop-title">WebP画像を選択（複数可）</div>
+      <div class="drop-desc">タップして「写真ライブラリ」または「ファイル」から選択</div>
+      <input type="file" id="fileInput" accept="image/webp,.webp" multiple />
+    </label>
+
+    <div class="action-bar" id="actionBar" style="display:none;">
+      <button class="btn btn-success" id="zipBtn" disabled>📦 ZIPで一括保存</button>
+      <button class="btn btn-secondary" id="clearBtn">クリア</button>
+    </div>
+
+    <div class="status-banner" id="statusBanner"></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="modal" id="modal">
+    <img id="modalImg" src="" alt="GIFプレビュー" />
+    <div class="modal-hint">画像を長押し →「"写真"に保存」でカメラロールに保存できます</div>
+    <button class="modal-close" id="modalClose">閉じる</button>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropArea = document.getElementById('dropArea');
+    const grid = document.getElementById('grid');
+    const actionBar = document.getElementById('actionBar');
+    const zipBtn = document.getElementById('zipBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusBanner = document.getElementById('statusBanner');
+    const maxWidthSelect = document.getElementById('maxWidth');
+    const qualitySelect = document.getElementById('quality');
+
+    const modal = document.getElementById('modal');
+    const modalImg = document.getElementById('modalImg');
+    const modalClose = document.getElementById('modalClose');
+
+    let convertedItems = [];
+    let workerBlobUrl = null;
+    let isProcessing = false;
+    let queue = [];
+
+    // gif.worker.js をBlob URL化（クロスオリジン制限回避）
+    async function getWorkerUrl() {
+      if (workerBlobUrl) return workerBlobUrl;
+      try {
+        const res = await fetch('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');
+        const text = await res.text();
+        const blob = new Blob([text], { type: 'application/javascript' });
+        workerBlobUrl = URL.createObjectURL(blob);
+        return workerBlobUrl;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // バイナリ解析によるアニメーションWebP判定＆フレーム抽出フォールバック
+    function parseAnimatedWebP(buffer) {
+      const view = new DataView(buffer);
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length < 12) return null;
+      const riff = String.fromCharCode(...bytes.slice(0, 4));
+      const webp = String.fromCharCode(...bytes.slice(8, 12));
+      if (riff !== 'RIFF' || webp !== 'WEBP') return null;
+
+      let offset = 12;
+      let isAnimated = false;
+      let canvasWidth = 0;
+      let canvasHeight = 0;
+      let bgColor = [0, 0, 0, 0];
+      let headerChunks = [];
+      let frames = [];
+
+      while (offset + 8 <= bytes.length) {
+        const fourCC = String.fromCharCode(...bytes.slice(offset, offset + 4));
+        const chunkSize = view.getUint32(offset + 4, true);
+        const paddedSize = chunkSize + (chunkSize % 2);
+        const chunkTotal = 8 + paddedSize;
+        if (offset + 8 + chunkSize > bytes.length) break;
+
+        const chunkData = bytes.slice(offset + 8, offset + 8 + chunkSize);
+        const fullChunk = bytes.slice(offset, offset + Math.min(chunkTotal, bytes.length - offset));
+
+        if (fourCC === 'VP8X' && chunkSize >= 10) {
+          const flags = chunkData[0];
+          isAnimated = (flags & 0x02) !== 0;
+          canvasWidth = 1 + (chunkData[4] | (chunkData[5] << 8) | (chunkData[6] << 16));
+          canvasHeight = 1 + (chunkData[7] | (chunkData[8] << 8) | (chunkData[9] << 16));
+          headerChunks.push({ fourCC, fullChunk });
+        } else if (fourCC === 'ANIM' && chunkSize >= 6) {
+          bgColor = [chunkData[0], chunkData[1], chunkData[2], chunkData[3]];
+        } else if (fourCC === 'ICCP' || fourCC === 'EXIF' || fourCC === 'XMP ') {
+          headerChunks.push({ fourCC, fullChunk });
+        } else if (fourCC === 'ANMF' && chunkSize >= 16) {
+          const fx = (chunkData[0] | (chunkData[1] << 8) | (chunkData[2] << 16)) * 2;
+          const fy = (chunkData[3] | (chunkData[4] << 8) | (chunkData[5] << 16)) * 2;
+          const fw = 1 + (chunkData[6] | (chunkData[7] << 8) | (chunkData[8] << 16));
+          const fh = 1 + (chunkData[9] | (chunkData[10] << 8) | (chunkData[11] << 16));
+          const duration = chunkData[12] | (chunkData[13] << 8) | (chunkData[14] << 16);
+          const fFlags = chunkData[15];
+          const dispose = (fFlags & 0x01) !== 0;
+          const blend = (fFlags & 0x02) === 0; // 0: alpha blend, 1: do not blend
+          const subBitstream = chunkData.slice(16);
+
+          // 単一フレームWebPを再構築
+          const hasAlpha = subBitstream.length >= 4 &&
+            String.fromCharCode(...subBitstream.slice(0, 4)) === 'ALPH';
+          const vp8xPayload = new Uint8Array(10);
+          vp8xPayload[0] = hasAlpha ? 0x10 : 0x00;
+          vp8xPayload[4] = (fw - 1) & 0xff;
+          vp8xPayload[5] = ((fw - 1) >> 8) & 0xff;
+          vp8xPayload[6] = ((fw - 1) >> 16) & 0xff;
+          vp8xPayload[7] = (fh - 1) & 0xff;
+          vp8xPayload[8] = ((fh - 1) >> 8) & 0xff;
+          vp8xPayload[9] = ((fh - 1) >> 16) & 0xff;
+
+          const totalBody = 4 + 18 + subBitstream.length;
+          const singleWebp = new Uint8Array(8 + totalBody);
+          singleWebp.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+          new DataView(singleWebp.buffer).setUint32(4, totalBody, true);
+          singleWebp.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+          singleWebp.set([0x56, 0x50, 0x38, 0x58], 12); // VP8X
+          new DataView(singleWebp.buffer).setUint32(16, 10, true);
+          singleWebp.set(vp8xPayload, 20);
+          singleWebp.set(subBitstream, 30);
+
+          frames.push({
+            fx, fy, fw, fh,
+            delay: Math.max(duration || 100, 20),
+            dispose,
+            blend,
+            blob: new Blob([singleWebp], { type: 'image/webp' })
+          });
+        }
+
+        offset += chunkTotal;
+      }
+
+      if (!isAnimated || frames.length <= 1) return null;
+      return { canvasWidth, canvasHeight, bgColor, frames };
+    }
+
+    function loadImageFromBlob(blob) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = (e) => {
+          URL.revokeObjectURL(url);
+          reject(e);
+        };
+        img.src = url;
+      });
+    }
+
+    async function extractFrames(file) {
+      const buffer = await file.arrayBuffer();
+      const maxW = parseInt(maxWidthSelect.value, 10);
+
+      // 1. ImageDecoder (WebCodecs API) を優先使用
+      if ('ImageDecoder' in window) {
+        try {
+          const decoder = new ImageDecoder({ data: buffer, type: 'image/webp' });
+          await decoder.tracks.ready;
+          const track = decoder.tracks.selectedTrack;
+          const frameCount = track ? track.frameCount : 1;
+
+          const extracted = [];
+          let targetW = 0;
+          let targetH = 0;
+
+          for (let i = 0; i < frameCount; i++) {
+            const { image } = await decoder.decode({ frameIndex: i });
+            if (i === 0) {
+              const origW = image.displayWidth;
+              const origH = image.displayHeight;
+              if (maxW > 0 && origW > maxW) {
+                targetW = maxW;
+                targetH = Math.round(origH * (maxW / origW));
+              } else {
+                targetW = origW;
+                targetH = origH;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = targetW;
+            canvas.height = targetH;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(image, 0, 0, targetW, targetH);
+
+            const delayMs = image.duration ? Math.max(Math.round(image.duration / 1000), 20) : 100;
+            image.close();
+            extracted.push({ canvas, delay: delayMs });
+          }
+          decoder.close();
+
+          if (extracted.length > 0) {
+            return { frames: extracted, width: targetW, height: targetH };
+          }
+        } catch (err) {
+          console.warn('ImageDecoder fallback:', err);
+        }
+      }
+
+      // 2. バイナリパーサーによるアニメーションWebP展開
+      const parsed = parseAnimatedWebP(buffer);
+      if (parsed) {
+        const origW = parsed.canvasWidth;
+        const origH = parsed.canvasHeight;
+        let targetW = origW;
+        let targetH = origH;
+        if (maxW > 0 && origW > maxW) {
+          targetW = maxW;
+          targetH = Math.round(origH * (maxW / origW));
+        }
+
+        const compCanvas = document.createElement('canvas');
+        compCanvas.width = origW;
+        compCanvas.height = origH;
+        const compCtx = compCanvas.getContext('2d');
+
+        const extracted = [];
+        for (const f of parsed.frames) {
+          const prevData = f.dispose ? compCtx.getImageData(0, 0, origW, origH) : null;
+          if (!f.blend) {
+            compCtx.clearRect(f.fx, f.fy, f.fw, f.fh);
+          }
+          const img = await loadImageFromBlob(f.blob);
+          compCtx.drawImage(img, f.fx, f.fy, f.fw, f.fh);
+
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = targetW;
+          outCanvas.height = targetH;
+          const outCtx = outCanvas.getContext('2d', { willReadFrequently: true });
+          outCtx.drawImage(compCanvas, 0, 0, targetW, targetH);
+
+          extracted.push({ canvas: outCanvas, delay: f.delay });
+
+          if (f.dispose && prevData) {
+            compCtx.clearRect(f.fx, f.fy, f.fw, f.fh);
+          }
+        }
+        return { frames: extracted, width: targetW, height: targetH };
+      }
+
+      // 3. 静止画WebPフォールバック
+      const img = await loadImageFromBlob(file);
+      let targetW = img.naturalWidth || img.width;
+      let targetH = img.naturalHeight || img.height;
+      if (maxW > 0 && targetW > maxW) {
+        targetH = Math.round(targetH * (maxW / targetW));
+        targetW = maxW;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      return { frames: [{ canvas, delay: 100 }], width: targetW, height: targetH };
+    }
+
+    async function convertToGif(file) {
+      const { frames, width, height } = await extractFrames(file);
+      const wUrl = await getWorkerUrl();
+      const quality = parseInt(qualitySelect.value, 10);
+
+      return new Promise((resolve, reject) => {
+        const gifOptions = {
+          workers: wUrl ? 2 : 0,
+          quality,
+          width,
+          height,
+          repeat: 0,
+          transparent: null
+        };
+        if (wUrl) gifOptions.workerScript = wUrl;
+
+        const gif = new GIF(gifOptions);
+        for (const f of frames) {
+          gif.addFrame(f.canvas, { delay: f.delay, copy: true });
+        }
+        gif.on('finished', (blob) => {
+          // メモリ解放
+          frames.forEach(f => { f.canvas.width = 0; f.canvas.height = 0; });
+          resolve({ blob, frameCount: frames.length });
+        });
+        gif.on('error', reject);
+        gif.render();
+      });
+    }
+
+    function createCard(file) {
+      const baseName = file.name.replace(/\.webp$/i, '') + '.gif';
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'thumb-wrap';
+
+      const img = document.createElement('img');
+      img.alt = baseName;
+      thumbWrap.appendChild(img);
+
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = '変換中...';
+      thumbWrap.appendChild(badge);
+
+      const footer = document.createElement('div');
+      footer.className = 'card-footer';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'file-name';
+      nameEl.textContent = baseName;
+
+      const btn = document.createElement('a');
+      btn.className = 'card-btn loading';
+      btn.textContent = '処理中...';
+
+      footer.appendChild(nameEl);
+      footer.appendChild(btn);
+      card.appendChild(thumbWrap);
+      card.appendChild(footer);
+      grid.appendChild(card);
+
+      return { baseName, img, badge, btn, thumbWrap };
+    }
+
+    async function processQueue() {
+      if (isProcessing) return;
+      isProcessing = true;
+      actionBar.style.display = 'flex';
+
+      while (queue.length > 0) {
+        const { file, ui } = queue.shift();
+        statusBanner.textContent = `変換中... 残り ${queue.length + 1} 件`;
+
+        try {
+          const { blob, frameCount } = await convertToGif(file);
+          const url = URL.createObjectURL(blob);
+
+          ui.img.src = url;
+          ui.badge.textContent = frameCount > 1 ? `GIF・${frameCount}コマ` : '静止画GIF';
+          ui.btn.href = url;
+          ui.btn.download = ui.baseName;
+          ui.btn.className = 'card-btn';
+          ui.btn.textContent = '保存 / 拡大';
+
+          const openPreview = () => {
+            modalImg.src = url;
+            modal.classList.add('open');
+          };
+          ui.thumbWrap.addEventListener('click', openPreview);
+
+          convertedItems.push({ name: ui.baseName, blob, url });
+          zipBtn.disabled = false;
+        } catch (err) {
+          console.error(err);
+          ui.badge.textContent = 'エラー';
+          ui.btn.className = 'card-btn error';
+          ui.btn.textContent = '変換失敗';
+        }
+      }
+
+      statusBanner.textContent = `完了（合計 ${convertedItems.length} 件）— 画像タップで拡大・長押し保存`;
+      isProcessing = false;
+    }
+
+    function handleFiles(files) {
+      const webpFiles = Array.from(files).filter(f =>
+        f.type === 'image/webp' || /\.webp$/i.test(f.name)
+      );
+      if (webpFiles.length === 0) {
+        alert('WebP画像を選択してください。');
+        return;
+      }
+      for (const file of webpFiles) {
+        const ui = createCard(file);
+        queue.push({ file, ui });
+      }
+      processQueue();
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFiles(e.target.files);
+        fileInput.value = '';
+      }
+    });
+
+    dropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+    dropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    });
+
+    zipBtn.addEventListener('click', async () => {
+      if (!convertedItems.length) return;
+      zipBtn.disabled = true;
+      zipBtn.textContent = 'ZIP作成中...';
+      try {
+        const zip = new JSZip();
+        const usedNames = new Set();
+        for (const item of convertedItems) {
+          let name = item.name;
+          let count = 1;
+          while (usedNames.has(name)) {
+            name = item.name.replace(/\.gif$/i, `_${count++}.gif`);
+          }
+          usedNames.add(name);
+          zip.file(name, item.blob);
+        }
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const zipUrl = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = zipUrl;
+        a.download = `converted_gifs_${Date.now()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(zipUrl), 10000);
+      } finally {
+        zipBtn.disabled = false;
+        zipBtn.textContent = '📦 ZIPで一括保存';
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      convertedItems.forEach(item => URL.revokeObjectURL(item.url));
+      convertedItems = [];
+      queue = [];
+      grid.innerHTML = '';
+      zipBtn.disabled = true;
+      actionBar.style.display = 'none';
+      statusBanner.textContent = '';
+    });
+
+    modalClose.addEventListener('click', () => {
+      modal.classList.remove('open');
+      modalImg.src = '';
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('open');
+        modalImg.src = '';
+      }
+    });
+  </script>
+</body>
+</html>
